@@ -1,0 +1,184 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  Triagem de chamados de manutencao hospitalar com anonimizacao (LGPD).
+  S3 -> Lambda (anonimiza + Bedrock + regra fixa) -> DynamoDB, e SNS -> SQS para prioridade alta.
+
+Parameters:
+  CodeBucket:
+    Type: String
+    Default: artefatos-lambda
+    Description: Bucket onde o setup.sh envia o .zip da Lambda.
+  CodeKey:
+    Type: String
+    Description: Nome do .zip no bucket (muda a cada deploy para forcar a atualizacao do codigo).
+  ModelId:
+    Type: String
+    Default: anthropic.claude-3-haiku-20240307-v1:0
+    Description: Modelo do Bedrock. No Floci ele e repassado ao Ollama (llama3.2).
+
+Resources:
+  # ---------- Armazenamento ----------
+  ChamadosTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: chamados
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: id
+          KeyType: HASH
+      Tags:
+        - Key: Projeto
+          Value: triagem-hospitalar
+
+  # ---------- Alertas ----------
+  AlertasTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: alertas-manutencao
+      Tags:
+        - Key: Projeto
+          Value: triagem-hospitalar
+
+  AlertasQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: fila-manutencao
+      Tags:
+        - Key: Projeto
+          Value: triagem-hospitalar
+
+  AlertasQueuePolicy:
+    Type: AWS::SQS::QueuePolicy
+    Properties:
+      Queues:
+        - !Ref AlertasQueue
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: sns.amazonaws.com
+            Action: sqs:SendMessage
+            Resource: !GetAtt AlertasQueue.Arn
+            Condition:
+              ArnEquals:
+                aws:SourceArn: !Ref AlertasTopic
+
+  AlertasSubscription:
+    Type: AWS::SNS::Subscription
+    Properties:
+      TopicArn: !Ref AlertasTopic
+      Protocol: sqs
+      Endpoint: !GetAtt AlertasQueue.Arn
+
+  # ---------- Permissoes da Lambda (menor privilegio) ----------
+  TriagemRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: MinimoTriagem
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: LerChamados
+                Effect: Allow
+                Action: s3:GetObject
+                Resource: !Sub "arn:aws:s3:::chamados-entrada-${AWS::AccountId}/*"
+              - Sid: UsarUmModelo
+                Effect: Allow
+                Action: bedrock:InvokeModel
+                Resource: !Sub "arn:aws:bedrock:${AWS::Region}::foundation-model/${ModelId}"
+              - Sid: GravarResultado
+                Effect: Allow
+                Action: dynamodb:PutItem
+                Resource: !GetAtt ChamadosTable.Arn
+              - Sid: AvisarEquipe
+                Effect: Allow
+                Action: sns:Publish
+                Resource: !Ref AlertasTopic
+              - Sid: Logs
+                Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource:
+                  - !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/triagem-chamados"
+                  - !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/triagem-chamados:*"
+      Tags:
+        - Key: Projeto
+          Value: triagem-hospitalar
+
+  # ---------- Funcao ----------
+  TriagemFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: triagem-chamados
+      Runtime: python3.12
+      Handler: handler.handler
+      Timeout: 120
+      MemorySize: 256
+      Role: !GetAtt TriagemRole.Arn
+      Code:
+        S3Bucket: !Ref CodeBucket
+        S3Key: !Ref CodeKey
+      Environment:
+        Variables:
+          TABELA: !Ref ChamadosTable
+          TOPICO_ARN: !Ref AlertasTopic
+          MODELO: !Ref ModelId
+      Tags:
+        - Key: Projeto
+          Value: triagem-hospitalar
+
+  TriagemInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref TriagemFunction
+      Action: lambda:InvokeFunction
+      Principal: s3.amazonaws.com
+      SourceAccount: !Ref AWS::AccountId
+      SourceArn: !Sub "arn:aws:s3:::chamados-entrada-${AWS::AccountId}"
+
+  # ---------- Entrada (o nome inclui a conta para ser unico na AWS real) ----------
+  ChamadosBucket:
+    Type: AWS::S3::Bucket
+    DependsOn: TriagemInvokePermission
+    Properties:
+      BucketName: !Sub "chamados-entrada-${AWS::AccountId}"
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      NotificationConfiguration:
+        LambdaConfigurations:
+          - Event: s3:ObjectCreated:*
+            Function: !GetAtt TriagemFunction.Arn
+      Tags:
+        - Key: Projeto
+          Value: triagem-hospitalar
+
+Outputs:
+  BucketEntrada:
+    Value: !Ref ChamadosBucket
+  TabelaResultados:
+    Value: !Ref ChamadosTable
+  TabelaArn:
+    Value: !GetAtt ChamadosTable.Arn
+  TopicoAlertas:
+    Value: !Ref AlertasTopic
+  FilaAlertasUrl:
+    Value: !Ref AlertasQueue
+  Funcao:
+    Value: !Ref TriagemFunction

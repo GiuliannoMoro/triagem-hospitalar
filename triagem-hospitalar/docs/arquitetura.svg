@@ -1,0 +1,86 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1100 530" font-family="Arial, Helvetica, sans-serif">
+  <defs>
+    <marker id="seta" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#44546A"/>
+    </marker>
+    <style>
+      .caixa { fill: #ffffff; stroke: #2E5597; stroke-width: 2; rx: 10; }
+      .ia { fill: #FFF4E5; stroke: #C55A11; }
+      .dado { fill: #EAF1FB; }
+      .titulo { font-size: 16px; font-weight: bold; fill: #1F3864; }
+      .sub { font-size: 12.5px; fill: #404040; }
+      .linha { stroke: #44546A; stroke-width: 2; fill: none; marker-end: url(#seta); }
+      .rot { font-size: 12px; fill: #44546A; }
+    </style>
+  </defs>
+  <rect width="1100" height="530" fill="#ffffff"/>
+  <text x="550" y="34" text-anchor="middle" font-size="20" font-weight="bold" fill="#1F3864">Triagem de chamados de manutenção hospitalar</text>
+  <text x="550" y="56" text-anchor="middle" class="sub">Floci (emulador da AWS) + Ollama · tudo implantado por CloudFormation</text>
+
+  <!-- Usuario -->
+  <rect class="caixa" x="20" y="180" width="140" height="80"/>
+  <text x="90" y="213" text-anchor="middle" class="titulo">Técnico</text>
+  <text x="90" y="235" text-anchor="middle" class="sub">abre chamado .txt</text>
+
+  <!-- S3 -->
+  <rect class="caixa dado" x="210" y="180" width="160" height="80"/>
+  <text x="290" y="213" text-anchor="middle" class="titulo">S3</text>
+  <text x="290" y="235" text-anchor="middle" class="sub">chamados-entrada</text>
+
+  <!-- Lambda -->
+  <rect class="caixa" x="430" y="120" width="250" height="200"/>
+  <text x="555" y="150" text-anchor="middle" class="titulo">Lambda triagem-chamados</text>
+  <text x="450" y="183" class="sub">1. anonimiza (CPF, nome,</text>
+  <text x="466" y="200" class="sub">prontuário, telefone)</text>
+  <text x="450" y="228" class="sub">2. pede resumo e prioridade</text>
+  <text x="450" y="256" class="sub">3. regra fixa: UTI, ventilador,</text>
+  <text x="466" y="273" class="sub">desfibrilador → alta</text>
+  <text x="450" y="301" class="sub">4. grava · 5. avisa se alta</text>
+
+  <!-- Bedrock -->
+  <rect class="caixa ia" x="440" y="370" width="230" height="78"/>
+  <text x="555" y="400" text-anchor="middle" class="titulo">Bedrock Runtime</text>
+  <text x="555" y="422" text-anchor="middle" class="sub">Floci → Ollama (llama3.2)</text>
+
+  <!-- DynamoDB -->
+  <rect class="caixa dado" x="760" y="90" width="170" height="70"/>
+  <text x="845" y="120" text-anchor="middle" class="titulo">DynamoDB</text>
+  <text x="845" y="141" text-anchor="middle" class="sub">tabela chamados</text>
+
+  <!-- SNS -->
+  <rect class="caixa" x="760" y="200" width="170" height="70"/>
+  <text x="845" y="230" text-anchor="middle" class="titulo">SNS</text>
+  <text x="845" y="251" text-anchor="middle" class="sub">alertas-manutencao</text>
+
+  <!-- SQS -->
+  <rect class="caixa" x="960" y="200" width="125" height="70"/>
+  <text x="1022" y="230" text-anchor="middle" class="titulo">SQS</text>
+  <text x="1022" y="251" text-anchor="middle" class="sub">equipe avisada</text>
+
+  <!-- CloudWatch -->
+  <rect class="caixa" x="760" y="310" width="170" height="70"/>
+  <text x="845" y="340" text-anchor="middle" class="titulo">CloudWatch Logs</text>
+  <text x="845" y="361" text-anchor="middle" class="sub">log sem dados pessoais</text>
+
+  <!-- Setas -->
+  <path class="linha" d="M160,220 L206,220"/>
+  <path class="linha" d="M370,220 L426,220"/>
+  <text x="398" y="210" text-anchor="middle" class="rot">evento</text>
+  <path class="linha" d="M530,320 L530,366"/>
+  <text x="522" y="348" text-anchor="end" class="rot">texto anonimizado</text>
+  <path class="linha" d="M580,370 L580,324"/>
+  <text x="588" y="348" class="rot">JSON</text>
+  <path class="linha" d="M680,160 L756,128"/>
+  <text x="724" y="168" text-anchor="middle" class="rot">resultado</text>
+  <path class="linha" d="M680,235 L756,235"/>
+  <text x="718" y="228" text-anchor="middle" class="rot">se alta</text>
+  <path class="linha" d="M930,235 L956,235"/>
+  <path class="linha" d="M680,300 L756,338"/>
+
+  <!-- Legenda -->
+  <rect x="20" y="478" width="18" height="14" fill="#FFF4E5" stroke="#C55A11"/>
+  <text x="46" y="490" class="sub">IA como componente</text>
+  <rect x="20" y="502" width="18" height="14" fill="#EAF1FB" stroke="#2E5597"/>
+  <text x="46" y="514" class="sub">armazenamento</text>
+  <text x="250" y="502" class="sub">IA como assistente: o Claude gerou o template e o código; o grupo revisou</text>
+</svg>
